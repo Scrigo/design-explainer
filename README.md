@@ -2,7 +2,7 @@
 
 A Claude Code plugin that shows the architecture of the project you're working on as an interactive C4 diagram, so a software architect can keep track of what AI coding agents are actually building.
 
-On request, Claude analyzes the current codebase, builds a C4 model (Context, Container, Component), writes it as [likeC4](https://likec4.dev) DSL into the project, and opens it in a local browser viewer. Clicking an element shows its role, technology and connections. Every relationship in the model is backed by evidence: the file and line in the code where the connection lives.
+On request, Claude analyzes the current codebase, builds a C4 model (Context, Container, Component), writes it as [likeC4](https://likec4.dev) DSL into the project, and opens it in a local browser viewer. Clicking an element shows its role, technology and connections. Every relationship in the model is backed by evidence: the file and line in the code where the connection lives. Besides runtime calls, the diagram shows code dependencies (one module importing another's types) as dotted lines, so dependency cycles are visible.
 
 ## Requirements
 
@@ -40,11 +40,11 @@ After reviewing the diagram, ask Claude for changes in terms of the diagram — 
 ```
 .design-explainer/
 ├── model/
-│   ├── spec.c4      # element kinds (managed by the plugin)
+│   ├── spec.c4      # element and relationship kinds (managed by the plugin)
 │   ├── model.c4     # elements and relationships
 │   └── views.c4     # diagram views
 ├── config.yaml      # optional hints for the analysis (exclusions, mapping, notes)
-├── state.json       # last analyzed commit
+├── state.json       # last analyzed commit, uncommitted-changes flag
 ├── .gitignore       # ignores run/
 └── run/             # viewer pid, port, log (not committed)
 ```
@@ -66,6 +66,7 @@ Use `config.yaml` when the folder structure doesn't reflect the intended archite
 - Validate: `claude plugin validate ./plugin` and `claude plugin validate .`
 - The likeC4 version is pinned in `plugin/scripts/common.sh`.
 - Design and rationale: [docs/architecture.md](docs/architecture.md).
+- End-to-end test: the sample app in [examples/bookshop](examples/bookshop) and the scenario with the expected model in [docs/testing.md](docs/testing.md).
 
 ## License
 

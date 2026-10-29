@@ -1,157 +1,149 @@
-# design-explainer — architecture
+# design-explainer: architecture
 
-Living design document: decisions made so far, their rationale, MVP scope, and what's deferred. Keep it in sync with CLAUDE.md (which holds only a short summary) and with the code once it exists.
+The design of the `design-explain` plugin: what it does, the key decisions and their rationale, how it is implemented, and what is planned next.
 
 ## Vision
 
-`design-explainer` gives a software architect oversight over code produced by AI agents. It is invoked *from other projects*: on request, it analyzes the target project's codebase, builds a C4 model of its architecture, and renders it as an interactive diagram — selecting an element shows its role and its connections.
+`design-explainer` gives a software architect oversight of code produced by AI agents. It is invoked *from other projects*. On request it analyzes the target project's codebase, builds a C4 model of its architecture, and renders it as an interactive diagram in which selecting an element shows its role and its connections.
 
-Target C4 levels: **Context, Container, Component**. We deliberately do **not** go down to the Code level (individual classes/files).
+Target C4 levels: **Context, Container, Component**. It deliberately does **not** go down to the Code level (individual classes or files).
 
-## What design-explainer actually is
+## What it is
 
-Not an application — a **Claude Code plugin** named `design-explain`: two skills (`/design-explain:show` runs the extraction workflow, `/design-explain:stop` stops the viewer), a `SessionEnd` hook, and a few small scripts. The "engine" is Claude Code's own agentic loop; rendering is likeC4.
+A **Claude Code plugin** named `design-explain`:
+- `/design-explain:show` runs the extraction workflow, validates the model and makes sure the viewer is running;
+- `/design-explain:stop` stops the viewer;
+- a `SessionEnd` hook stops the viewer automatically.
 
-**Distribution**: a plugin, not a user-level skill. Originally the MVP was going to be a user-level skill (`~/.claude/skills/`) with the plugin deferred, but two requirements need the plugin now: the namespaced command `design-explain:stop` (a colon in a command name exists only as the `/<plugin>:<skill>` plugin namespace) and the session-end hook (plugin hooks register on install, with no edits to the user's `settings.json`). This repo is also the marketplace (`.claude-plugin/marketplace.json`, plugin under `plugin/`). Installed from the local directory, the plugin is read live: edits apply on `/reload-plugins` or the next session.
+The extraction "engine" is Claude Code's own agentic loop following the skill's instructions; rendering is done by [likeC4](https://likec4.dev). This repository is also a plugin marketplace (`.claude-plugin/marketplace.json`, plugin under `plugin/`).
 
-**Runtime prerequisites in the target environment**: Node.js with `npx` (to run `npx likec4`). Nothing has to be added to the target project's own dependencies.
+It is a plugin rather than a standalone skill because both of these need one: the namespaced commands (`/<plugin>:<skill>`), and a hook that registers on install without editing the user's `settings.json`.
+
+**Runtime prerequisites**: Node.js with `npx` (likeC4 runs via `npx`). Nothing is added to the target project's own dependencies.
 
 ## Decisions
 
 ### 1. Extraction: LLM-based, run by the agent itself
 
-**LLM-based**, not static/AST analysis — target codebases can be in any language (Python, Java, Go, ...), and maintaining a parser per language isn't viable. Concretely this is **not a separate LLM pipeline**: the skill's instructions drive Claude Code's own tool use (reading files, grepping, optionally spawning subagents).
+Extraction is **LLM-based**, not static/AST analysis. Target codebases can be in any language, and maintaining a parser per language isn't viable. It is **not a separate LLM pipeline**: the skill's instructions drive Claude Code's own tool use (reading files, grepping).
 
-**Every relationship must carry evidence.** Relationships are the most valuable part of the diagram for an architect ("too many connections", "A must not call B") and also the part most exposed to LLM non-determinism and hallucination. In a tool meant to give control over AI agents, a wrong diagram is worse than none — it creates false confidence. Therefore:
-- each relationship stores evidence in metadata, e.g. `evidence: "src/billing/client.py:42"` (an import, an HTTP call, a config entry, a queue topic);
+**Every relationship must carry evidence.** Relationships are the most valuable part of the diagram for an architect ("too many connections", "A must not call B"). They are also the part most exposed to LLM non-determinism and hallucination. In a tool meant to give control over AI agents, a wrong diagram is worse than none, because it creates false confidence. Therefore:
+- each relationship stores `evidence` (`file:line`) in its metadata: an import, a call, a query, a queue operation;
 - a relationship without evidence does not go into the model;
-- evidence makes relationships verifiable (by the architect and by the agent during validation) and more stable across runs.
+- evidence makes relationships verifiable, both by the architect and by the agent during validation, and more stable across runs.
 
-### 2. Model format & rendering: likeC4
+### 2. Model format and rendering: likeC4
 
-**[likeC4](https://likec4.dev)**, rather than a custom format/viewer or IcePanel.
+likeC4 is local-first: the model stays in the repository and nothing is sent to a third-party service. It covers everything from model to diagram, but nothing from code to model. None of its CLI commands, MCP tools or its Agent Skill analyze source code, so extraction is done entirely by this plugin.
 
-Why not IcePanel: it's a hosted SaaS — architecture data of potentially proprietary codebases would go to a third-party cloud; it's freemium with per-object limits; its strengths (collaborative manual editing, hosted sharing) matter for multi-stakeholder dashboards, not for an architect's local per-project tool. Can be revisited if that need appears.
+What likeC4 provides:
+- a DSL (`.c4`) for elements and relationships, with a `specification` block for custom element and relationship kinds and free-form metadata;
+- `likec4 serve`: a dev server with file watching and hot reload;
+- an interactive browser viewer: clicking an element shows its description, technology and relationships, and you can drill down into nested levels, with no custom frontend needed;
+- automatic layout computed from the graph, so stable element IDs and relationships give a stable layout;
+- `validate` (syntax and references), exports and a static site `build`.
 
-**likeC4 covers 100% of "model → diagram" and 0% of "code → model"** — none of its CLI commands, MCP tools, or its Agent Skill analyze source code. Extraction is entirely ours.
+Not used: the likeC4 MCP server and the `likec4-dsl` Agent Skill. An MCP server registered mid-session only becomes available in the next session, so the skill couldn't bootstrap it on first run. Syntax checking is done with `likec4 validate`, and the agent checks the evidence itself.
 
-What likeC4 gives out of the box:
-- DSL (`.c4` / `.likec4`) for elements and relationships, a `specification` block for custom element/relationship kinds, tags, and free-form metadata;
-- view types: context, container, component, deployment, dynamic;
-- `likec4 serve` / `dev` — dev server with file watching and hot reload;
-- interactive browser viewer — click an element to see description, technology, relationships, drill down into nested levels (covers the interactivity requirement, no custom frontend);
-- automatic layout computed from the graph — so stable element IDs and relationships imply a stable layout;
-- exports (PNG/JPG, JSON, drawio, mermaid/d2/plantuml/dot), static site `build`, React/Web Components embedding;
-- TypeScript Model API; `validate` (syntax + layout drift).
+### 3. Invocation and server lifecycle
 
-likeC4 AI tooling — investigated, **not used in the MVP**:
-- **Agent Skill `likec4-dsl`** (`npx skills add https://likec4.dev/`) — teaches DSL syntax. Optional helper; the MVP can rely on `likec4 validate` to catch syntax errors and fix them.
-- **MCP server `@likec4/mcp`** (`claude mcp add likec4 -- npx -y @likec4/mcp`) — ~30 tools for querying an *existing* model. Not used in the MVP: an MCP server registered mid-session only becomes available in a new session, so the skill can't bootstrap it on first run, and it would be an extra setup step. Syntax validation is done via CLI; evidence checking is done by the agent itself.
-  - `element-diff` — verified: pairwise comparison of two elements within a model, **not** a diff of the model over time. Not useful for regeneration.
-  - `list-diffs` (DSL `diff` blocks) and `removal-impact` — not investigated; possible later building blocks for architecture history (see Deferred).
-
-### 3. Invocation & server lifecycle
-
-**One skill** (`design-explain`) does everything on an explicit call: runs the extraction workflow, writes the model, and ensures the likeC4 server is running. Splitting "init" from "generate" would force the user to remember an ordering; an idempotent check removes that.
+**One command** (`/design-explain:show`) does everything on an explicit call: it runs the extraction, writes the model, and ensures the viewer is running. There is no separate init step to remember, because the server check is idempotent.
 
 Server handling:
-- check a pidfile (and that the process is alive / the port answers); if no live server → start one, otherwise do nothing — likeC4's file watcher reloads the browser on its own;
-- the server must be **detached from the Claude Code session** (`nohup` / `setsid`) — a process started via the Bash tool's background mode is tied to the session and would die with it;
-- **port per project**, so multiple projects can have servers running at the same time;
-- **stopping**: `/design-explain:stop` on demand, and automatically via a `SessionEnd` hook when the session ends — matcher `logout|prompt_input_exit|other`, so **not** on `/clear` or `/resume` (the user keeps working in the same terminal and likely still views the diagram). The next `/design-explain:show` starts the server again.
-- known limitation: with two concurrent Claude Code sessions in the same project, ending one stops the server the other may still be looking at (the server is per project, not per session); the next `/design-explain:show` restarts it.
+- a pidfile, plus a check that the process is alive and the port answers. If no server is live, one is started; otherwise likeC4's file watcher reloads the open page by itself;
+- the server is **detached from the Claude Code session** (`setsid nohup`). A process started in the Bash tool's background mode would die with the session;
+- **a port per project**, so several projects can have viewers running at the same time;
+- **stopping**: `/design-explain:stop` on demand, and automatically through the `SessionEnd` hook when the session ends. The hook's matcher is `logout|prompt_input_exit|other`, so it does **not** fire on `/clear` or `/resume`: the user keeps working in the same terminal and likely still views the diagram. The next `/design-explain:show` starts the server again.
+- known limitation: with two concurrent sessions in the same project, ending one stops the viewer the other may still be using, because the server is per project, not per session. The next `/design-explain:show` restarts it.
 
-### 4. Storage & git
+### 4. Storage and git
 
-The generated model lives in the target repo and **is committed**; runtime state (pidfile, logs) is gitignored. Committing the model gives us, almost for free:
-- **"what changed" report** = `git diff` of the model files;
-- **architecture history over time** = `git log` of the model — covers most of what the deferred "diff blocks" idea was meant to give;
-- **incremental regeneration** (post-MVP) — the model records the last analyzed commit hash, so the next run can re-analyze only containers with changes since then.
+The generated model lives in the target repo and **is committed**; runtime state (pidfile, port, log) is gitignored. Committing the model gives:
+- a **"what changed" report** from `git diff` of the model files;
+- **architecture history** from `git log` of the model;
+- groundwork for **incremental regeneration**: `state.json` records the last analyzed commit.
+
+### 5. Code is the single source of truth
+
+There is no manual override layer for the model's structure. Architect feedback ("split this component", "remove this cycle") is carried out by the agent as a code change, and the next run picks up the new structure through stable, path-based IDs. When the architect disagrees with how code is categorized and doesn't want to move files, the remedy is a mapping hint in the project config, not an edit to the model.
 
 ## Extraction workflow
 
-What `/design-explain:show` instructs the agent to do:
+What `/design-explain:show` instructs the agent to do (details in `plugin/skills/show/SKILL.md`):
 
-1. **Load the previous model** (if any) and the last analyzed commit hash. The previous model is the reference point, not something to be discarded.
-2. **Lightweight recon** before reading code: directory tree, manifests (`package.json`, `pyproject.toml`, `go.mod`, `pom.xml`/`build.gradle`), Dockerfiles / `docker-compose.yml`, README, config files. Cheap signals for language, frameworks, monorepo vs. single service, deployable units, external dependencies.
-3. **Apply the mapping convention** (fixed rules, not re-invented each run):
-   - **System** = the analyzed project/repo.
-   - **Context level** = **external systems** (third-party APIs, managed services such as Stripe or S3, other systems — detected via SDK imports, client config, URLs, env vars) and **actors** (users / other systems calling in, where identifiable).
-   - **Container** = independently deployable/runnable unit: distinct entrypoint, Dockerfile / compose service, deployable module; also databases, queues, caches the system owns.
-   - **Component** = cohesive internal module within a container — **not** necessarily a top-level folder. Per-ecosystem starting hints (to be refined on real repos):
+1. **Load the previous state**: the previous model (the reference point for IDs), `state.json`, the files changed since the last analyzed commit, and the project config.
+2. **Lightweight recon** before reading code: the directory tree, manifests (`package.json`, `pyproject.toml`, `go.mod`, `pom.xml`/`build.gradle`, …), Dockerfiles and compose files, the README and config files. Then Grep for imports, routes, DB access and queue producers/consumers, reading only the files needed to confirm them.
+3. **Apply the mapping convention**:
+   - **System** = the analyzed repository.
+   - **Context level** = **external systems** (third-party APIs and managed services, detected via SDK imports, client config, URLs and env vars) and **actors** (users or other systems calling in, where identifiable).
+   - **Container** = an independently deployable or runnable unit (own entrypoint, Dockerfile, compose service, deployable module), plus the databases and queues the system uses.
+   - **Component** = a cohesive internal module within a container, not necessarily a top-level folder. Per-ecosystem defaults:
      - *Go*: `cmd/*` → containers; `internal/*`, `pkg/*` → components.
-     - *Java/Kotlin*: deployable Maven/Gradle modules (e.g. a Spring Boot app) → containers; packages directly under the base package (`com/acme/billing`) → components.
-     - *Python*: separately deployed services/apps → containers; subpackages of the main package (`src/<pkg>/*`) → components.
+     - *Java/Kotlin*: deployable Maven/Gradle modules → containers; packages directly under the base package → components.
+     - *Python*: separately deployed apps → containers; subpackages of the main package → components.
      - *Node/TS*: workspace packages with their own entrypoint → containers; feature/module directories under `src/` → components.
-   - Mapping hints from the project config (see below) override these defaults.
-   - A container's entrypoint/wiring code (`main.py`, `app.py`, DI setup) is the container itself, not a component. likeC4 rejects parent → child relationships, so container → own-component calls are not modeled (they are implied by containment). Without this rule the first e2e run invented a file-level component `main` just to carry those relationships.
-4. **Explore**: MVP — a single direct pass. Post-MVP — for large/multi-container repos, fan out one `Explore` subagent per candidate container (each returns a condensed summary: components, mutual dependencies, external connections, **with evidence**), and incremental runs that only re-explore containers changed since the last analyzed commit.
-5. **Stable IDs**: element ID = slug derived from its path; the original path is kept in metadata (`sourcePath`), so an ID mentioned by the user in conversation resolves reliably back to the code. Titles/descriptions may be refreshed each run; identity doesn't change unless the path does. IDs never come from generic names (`main`, `app`, `index`, …). The first `sourcePath` entry is the main code path; shared deployment files (Dockerfile, compose) only follow it, unless the element exists only there (a compose-only database).
-6. **Relationships with evidence** (decision 1): every relationship carries `evidence` (file:line); no evidence → no relationship. Two kinds: runtime (default — calls, HTTP, SQL, queues) and `code-dependency` (dotted — importing another element's types/models/constants without calling it; only between modeled elements, omitted when a runtime relationship in the same direction exists). Code dependencies were added after e2e step 2 so that cycles like `orders` ⇄ `invoicing` show up on the diagram; the report names cycles explicitly.
-7. **Regenerate with the previous model as reference** — keep IDs of elements whose paths still exist, drop elements whose paths are gone, add new ones. No elaborate merge machinery: stable IDs plus likeC4's automatic layout already keep the diagram stable.
-8. **Validate**: `npx likec4 validate` (syntax), plus the agent spot-checks that evidence entries point at real code. Bounded number of fix attempts.
-9. **Ensure the server is running** (decision 3) and **report**: the URL plus a short summary of changes derived from `git diff` of the model.
+   - A container's entrypoint and wiring code (`main.py`, `app.py`, DI setup) is the container itself, not a component. likeC4 rejects parent → child relationships, so calls from a container into its own components are not modeled; containment implies them.
+   - Mapping hints in the project config override these defaults.
+4. **Stable IDs**: an element's ID is a slug of the last segment of its main path, and the original path is kept in `sourcePath` metadata. An ID mentioned in conversation therefore resolves reliably back to the code. Existing IDs are kept as long as the path exists. IDs never come from generic names (`main`, `app`, `index`, …). The first `sourcePath` entry is the main code path; shared deployment files may follow it.
+5. **Relationships with evidence**, modeled at the lowest level that has evidence (likeC4 aggregates them upward). There are two kinds:
+   - **runtime** (default): calls, HTTP, SQL, queues;
+   - **`code-dependency`** (drawn dotted): one element imports another's types, models or constants without calling it. These are only drawn between modeled elements, and omitted when a runtime relationship already exists in the same direction. They make dependency cycles visible, and the report names each cycle.
+6. **Write** `model.c4` and `views.c4` in full: a system context view, a containers view, and a components view per container.
+7. **Validate** with `likec4 validate` (at most 3 fix attempts), and spot-check that the cited evidence lines support the relationships.
+8. **Record the state, ensure the viewer, report**: the URL, counts, the changes since the last run (from `git diff` of the model), dependency cycles, and suspected but unconfirmed relationships. The agent never commits on its own.
 
-**No manual override layer for structure.** Architect feedback ("split this component", "simplify these connections") is carried out by the agent as a real code change; the next run picks up the new structure through stable path-based IDs. Code is the single source of truth; the model is always its reflection.
+## Project config: `.design-explainer/config.yaml`
 
-## Project config: `.design-explainer/config`
+An optional, committed config file in the target repo. It is input to extraction, not a model override:
+- `exclude`: paths that are not part of the system (e.g. dev scripts);
+- `mapping`: categorization hints (e.g. "`billing/legacy_auth.py` belongs to `auth`");
+- `notes`: free-form context for the agent.
 
-A small, optional, committed config file in the target repo. Not a model override — input to extraction:
-- **mapping hints** — e.g. "`billing/legacy_auth.py` belongs to the `auth` component", "treat `tools/` as not part of the system". This resolves the case where the architect disagrees with a categorization without wanting to move files.
-- **architecture rules** (post-MVP, see Deferred) — e.g. "`billing` must not call `auth` directly".
+## Current scope and limitations
 
-## MVP scope
+- Single-pass extraction (no subagent fan-out), re-run in full on every invocation; previous IDs are kept as the reference point.
+- Tested end-to-end on a small Python project (see [testing.md](testing.md)). Larger, multi-language repositories are not tested yet.
+- Linux and WSL2 only tested. On macOS there is no `setsid`: the scripts fall back to plain `nohup`, and stopping then kills only the `npx` process.
 
-1. Plugin `design-explain`: `explain` and `stop` skills, `SessionEnd` hook, scripts.
-2. Model in a committed directory in the target repo; pidfile/logs gitignored.
-3. Single-pass extraction (no fan-out), tried on one small real repo.
-4. Mandatory `evidence` on relationships, `sourcePath` on elements; Context level (external systems) included.
-5. Validation via `npx likec4 validate` — no MCP, no likeC4 Agent Skill dependency.
-6. Change report via `git diff`.
-7. Detached likeC4 server with per-project port and pidfile; stop skill + automatic stop at session end.
+## Roadmap
 
-## Deferred / future
+- **Architecture rules and conformance checking**: the architect declares the intended rules in the project config (e.g. "`billing` must not call `auth`", "no dependency cycles"). Each run flags violations, with evidence. This is the main long-term goal: comparing what the agents built with what was *meant* to be built, not just showing the as-is state.
+- **Scale**: fan-out exploration with one `Explore` subagent per container for large repos, and incremental runs that only re-analyze containers changed since the last analyzed commit (`workingTreeDirty` in `state.json` keeps that baseline honest).
+- **Optional likeC4 MCP integration** for querying the model (e.g. `removal-impact`).
 
-- **Architecture rules & conformance checking** — the architect declares intended architecture rules in the project config; each run flags violations (with evidence). Likely the main long-term value of the tool: comparing what the agents built with what was *meant* to be built, not just showing the as-is state.
-- Fan-out exploration via `Explore` subagents for large repos; incremental regeneration based on the last analyzed commit.
-- Optional likeC4 MCP integration (querying the model, `removal-impact`) and the `likec4-dsl` Agent Skill.
-- likeC4 DSL `diff` blocks / `list-diffs` for richer architecture history in the viewer — only if git-based history turns out insufficient; otherwise a custom mechanism.
-- Hosting the marketplace in a git repo for installation on other machines; README/LICENSE (required only for submission to Anthropic's plugin directory).
+## Implementation
 
-## Implementation (MVP)
+Repository layout:
+- `.claude-plugin/marketplace.json`: the marketplace `design-explainer`, listing the plugin;
+- `plugin/.claude-plugin/plugin.json`: the plugin `design-explain`;
+- `plugin/skills/show/SKILL.md`: the workflow as agent instructions, including a DSL syntax reference verified against the pinned likeC4 version. Scripts are referenced via `${CLAUDE_PLUGIN_ROOT}/scripts/`;
+- `plugin/skills/stop/SKILL.md`: runs `stop-server.sh`;
+- `plugin/hooks/hooks.json`: `SessionEnd` → `scripts/session-end.sh`, with a 15 s timeout (the default hook budget at session end is 1.5 s);
+- `plugin/scripts/`, `plugin/templates/`;
+- `examples/bookshop/`: the test application, with `examples/bookshop-invoicing.patch` for the second test step.
 
-Repo layout:
-- `.claude-plugin/marketplace.json` — local marketplace `design-explainer` listing the plugin;
-- `plugin/.claude-plugin/plugin.json` — plugin `design-explain`;
-- `plugin/skills/show/SKILL.md` — the workflow above as agent instructions, including a verified DSL syntax reference; scripts referenced via `${CLAUDE_PLUGIN_ROOT}/scripts/`;
-- `plugin/skills/stop/SKILL.md` — runs `stop-server.sh`;
-- `plugin/hooks/hooks.json` — `SessionEnd` → `scripts/session-end.sh` (timeout 15 s; the default hook budget at session end is 1.5 s);
-- `plugin/scripts/`, `plugin/templates/`.
-
-Install: `claude plugin marketplace add <path-to-this-repo>`, then `claude plugin install design-explain@design-explainer`. For development without installing: `claude --plugin-dir <repo>/plugin`. Check manifests with `claude plugin validate ./plugin` and `claude plugin validate .`.
-
-**likeC4 version**: pinned to **1.60.0** in one place, `scripts/common.sh` (`LIKEC4_VERSION`), always run as `npx -y likec4@<version>`. Bumping it is a deliberate change: re-verify the DSL reference in `SKILL.md` with `validate` afterwards.
+**likeC4 version**: pinned to **1.60.0** in one place, `scripts/common.sh` (`LIKEC4_VERSION`), and always run as `npx -y likec4@<version>`. Bumping it is a deliberate change: re-verify the DSL reference in `SKILL.md` with `validate` afterwards.
 
 **Workspace layout in the target repo** (`.design-explainer/`):
-- `model/spec.c4` — element and relationship kinds, owned by the plugin: `init-workspace.sh` re-syncs it from `templates/spec.c4` on every run (so spec changes reach existing workspaces), never edited by the agent;
-- `model/model.c4` — elements and relationships; `model/views.c4` — views (both fully rewritten each run, after the previous version was read as reference);
-- `config.yaml` — optional mapping hints / exclusions / notes (template with commented examples);
-- `state.json` — `lastAnalyzedCommit`, `workingTreeDirty` (the model also reflects uncommitted code changes, so it describes HEAD + working tree, not HEAD; groundwork for incremental runs and per-commit conformance checks), `analyzedAt`, `likec4Version`;
-- `.gitignore` → ignores `run/`; `run/` holds `server.pid`, `server.port`, `server.log`.
+- `model/spec.c4`: element and relationship kinds. The plugin owns this file: `init-workspace.sh` re-syncs it from `templates/spec.c4` on every run, so spec changes reach existing workspaces. The agent never edits it;
+- `model/model.c4` (elements and relationships) and `model/views.c4` (views): both fully rewritten on each run, after the previous version has been read as the reference;
+- `config.yaml`: the project config (the template contains commented examples);
+- `state.json`: `lastAnalyzedCommit`, `workingTreeDirty` (true when the model also reflects uncommitted code changes, so it describes HEAD plus the working tree), `analyzedAt`, `likec4Version`;
+- `.gitignore` ignores `run/`, which holds `server.pid`, `server.port` and `server.log`.
+
 Everything except `run/` is meant to be committed.
 
-**Scripts** (all take an optional project root; default = git toplevel, else cwd):
-- `init-workspace.sh` — creates the workspace if missing; syncs `spec.c4` from the template; prints root, HEAD, `working_tree_dirty` (uncommitted changes outside `.design-explainer/`), `state.json`, files changed since the last analyzed commit, existing model files.
-- `validate.sh` — `likec4 validate` on `model/`; exit code 0 = valid (verified: a dangling reference yields exit 1 with file/line errors).
-- `ensure-server.sh` — idempotent: reuses a live server (pidfile + process alive + port open) or starts `likec4 serve` detached via `setsid nohup`, bound to `127.0.0.1`; waits up to 120 s for the port.
-- `stop-server.sh` — kills the server's whole process group; safe to call when nothing runs.
-- `session-end.sh` — hook entry point: exits immediately unless `$CLAUDE_PROJECT_DIR/.design-explainer/run/server.pid` exists (the hook fires in every project where the plugin is enabled), otherwise calls `stop-server.sh`. Measured: ~0.2 s with a running server, ~3 ms without a workspace.
+**Scripts** (each takes an optional project root; the default is the git toplevel, else the current directory):
+- `init-workspace.sh`: creates the workspace if it is missing and syncs `spec.c4`. Prints the root, HEAD, `working_tree_dirty` (uncommitted changes outside `.design-explainer/`), `state.json`, the files changed since the last analyzed commit, and the existing model files.
+- `validate.sh`: runs `likec4 validate` on `model/`. Exit code 0 means valid; errors come with file and line.
+- `ensure-server.sh`: idempotent. Reuses a live server (pidfile, live process, open port) or starts `likec4 serve` detached via `setsid nohup`, bound to `127.0.0.1`, and waits up to 120 s for the port.
+- `stop-server.sh`: kills the server's whole process group; safe to call when nothing is running.
+- `session-end.sh`: the hook entry point. It exits immediately unless `$CLAUDE_PROJECT_DIR/.design-explainer/run/server.pid` exists, because the hook fires in every project where the plugin is enabled; otherwise it calls `stop-server.sh`. It takes about 0.2 s with a running server and about 3 ms without a workspace.
 
-**Port scheme**: `61000 + cksum(project path) % 1000`, probing upward (max 50) if the port is taken; the chosen port is stored in `run/server.port` and reused on restart.
+**Port scheme**: `61000 + cksum(project path) % 1000`, probing upward (up to 50 ports) if that port is taken. The chosen port is stored in `run/server.port` and reused on restart.
 
-**Verified behavior** (WSL2, likeC4 1.60.0): DSL incl. array `evidence` metadata on relationships and hyphenated IDs validates; the server survives across separate shell invocations; editing a model file triggers a hot reload within ~1 s; on first start likeC4 opens the browser by itself (on WSL via `powershell.exe`).
-
-## Open items
-
-1. ~~End-to-end test of the skill~~ — done 2026-10-29 on `~/Projects/bookshop-example`, all 4 steps passed; results and the resulting `SKILL.md` changes in [docs/testing.md](testing.md). Next: a larger/real project (multi-container, another language) to test scale and the ecosystem hints.
-2. Non-Linux hosts: `setsid` is absent on macOS (scripts fall back to plain `nohup`, process-group kill then degrades to killing the npx pid) — untested.
+**Verified behavior** (WSL2, likeC4 1.60.0):
+- the DSL, including array metadata, hyphenated IDs and relationship kinds, validates, and an unknown relationship kind fails validation;
+- the server survives across separate shell invocations and sessions;
+- editing a model file triggers a hot reload within about 1 s;
+- on first start likeC4 opens the browser by itself (on WSL via `powershell.exe`).

@@ -13,7 +13,7 @@ MVP implemented as the plugin in `plugin/` (scripts, hook and the full show work
 - Validate manifests: `claude plugin validate ./plugin` and `claude plugin validate .` (missing README/LICENSE/icon warnings only matter for submission to Anthropic's directory).
 - Scripts (each takes an optional target project root): `plugin/scripts/{init-workspace,validate,ensure-server,stop-server,session-end}.sh`
 - likeC4 version is pinned only in `plugin/scripts/common.sh` (`LIKEC4_VERSION`); after bumping it, re-check the DSL reference in `plugin/skills/show/SKILL.md` with `validate.sh` on a sample model.
-- There is no test suite; scripts are tested manually against a throwaway git repo in a scratch directory (init → write model → validate → ensure-server twice → curl → stop; hook: `CLAUDE_PROJECT_DIR=<repo> plugin/scripts/session-end.sh`).
+- There is no automated test suite. The show workflow is tested manually end-to-end per docs/testing.md; scripts are tested manually against a throwaway git repo in a scratch directory (init → write model → validate → ensure-server twice → curl → stop; hook: `CLAUDE_PROJECT_DIR=<repo> plugin/scripts/session-end.sh`).
 
 ## Vision
 
@@ -32,13 +32,13 @@ The extraction "engine" is Claude Code's own agentic loop; rendering is [likeC4]
 
 - **Extraction**: LLM-based (language-agnostic), done by the agent itself following the skill's instructions. Every relationship must carry `evidence` (file:line); no evidence → not in the model. Relationships are runtime (default) or `code-dependency` (dotted; type/model imports without calls), so cycles are visible. Elements get stable path-derived IDs with the original path in `sourcePath` metadata.
 - **Mapping convention**: System = repo; Context = external systems/actors; Container = deployable unit (plus owned DBs/queues); Component = cohesive internal module, using per-ecosystem hints (Go, Java, Python, Node) rather than "top-level folder".
-- **Rendering**: likeC4 (local-first, auto layout, interactive viewer, hot-reload dev server), chosen over IcePanel (SaaS).
+- **Rendering**: likeC4 (local-first, auto layout, interactive viewer, hot-reload dev server).
 - **Server lifecycle**: `show` idempotently ensures a **detached** (`setsid nohup`) likeC4 server with a per-project port and pidfile; stopped by the stop skill or the session-end hook.
 - **Storage & git**: the model is committed in the target repo; runtime state is gitignored. "What changed" = `git diff` of the model; history = `git log`.
 - **Not in the MVP**: likeC4 MCP server (can't be bootstrapped mid-session) and its Agent Skill; subagent fan-out; incremental runs; architecture-rules conformance checking (the main long-term direction).
 - **No manual model override**: architect feedback becomes real code changes; the next run picks them up. Categorization disagreements go into optional mapping hints in `.design-explainer/config.yaml`.
 
-Target-repo workspace: `.design-explainer/` with `model/{spec,model,views}.c4`, `config.yaml`, `state.json` (committed) and `run/` (pidfile/port/log, gitignored). End-to-end test on `~/Projects/bookshop-example` passed (scenario, expected model and results in docs/testing.md). Never copy docs/testing.md (or hints from it) into the test project: the agent under test would read it during recon.
+Target-repo workspace: `.design-explainer/` with `model/{spec,model,views}.c4`, `config.yaml`, `state.json` (committed) and `run/` (pidfile/port/log, gitignored). End-to-end test: test app in `examples/bookshop/` (+ `examples/bookshop-invoicing.patch` for step 2); setup, expected model, scenario and results in docs/testing.md. Always run it on a copy outside this repo, and never put docs/testing.md (or hints from it) into the copy: the agent under test would read it during recon.
 
 ## Working on this repo
 

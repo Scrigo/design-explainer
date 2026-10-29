@@ -1,0 +1,81 @@
+diff --git a/bookshop/invoicing/__init__.py b/bookshop/invoicing/__init__.py
+new file mode 100644
+index 0000000..e69de29
+diff --git a/bookshop/invoicing/models.py b/bookshop/invoicing/models.py
+new file mode 100644
+index 0000000..14927ae
+--- /dev/null
++++ b/bookshop/invoicing/models.py
+@@ -0,0 +1,18 @@
++from datetime import datetime
++from decimal import Decimal
++
++from sqlalchemy import DateTime, ForeignKey, Numeric, String, func
++from sqlalchemy.orm import Mapped, mapped_column
++
++from bookshop.db import Base
++
++
++class Invoice(Base):
++    __tablename__ = "invoices"
++
++    id: Mapped[int] = mapped_column(primary_key=True)
++    number: Mapped[str] = mapped_column(String(32), unique=True)
++    order_id: Mapped[int] = mapped_column(ForeignKey("orders.id"), unique=True)
++    customer_email: Mapped[str] = mapped_column(String(320))
++    amount: Mapped[Decimal] = mapped_column(Numeric(10, 2))
++    issued_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+diff --git a/bookshop/invoicing/service.py b/bookshop/invoicing/service.py
+new file mode 100644
+index 0000000..4eb8b13
+--- /dev/null
++++ b/bookshop/invoicing/service.py
+@@ -0,0 +1,16 @@
++from sqlalchemy.orm import Session
++
++from bookshop.invoicing.models import Invoice
++from bookshop.orders.models import Order
++
++
++def create_invoice(session: Session, order: Order) -> Invoice:
++    invoice = Invoice(
++        number=f"INV-{order.id:08d}",
++        order_id=order.id,
++        customer_email=order.customer_email,
++        amount=order.total,
++    )
++    session.add(invoice)
++    session.commit()
++    return invoice
+diff --git a/bookshop/orders/service.py b/bookshop/orders/service.py
+index f251238..0cfbd18 100644
+--- a/bookshop/orders/service.py
++++ b/bookshop/orders/service.py
+@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
+ 
+ from bookshop import jobs
+ from bookshop.catalog import repository as catalog
++from bookshop.invoicing.service import create_invoice
+ from bookshop.orders.models import Order, OrderItem
+ from bookshop.payments.stripe_client import charge
+ 
+@@ -44,6 +45,7 @@ def place_order(
+     order.status = "paid"
+     session.add(order)
+     session.commit()
++    create_invoice(session, order)
+ 
+     jobs.enqueue("order_confirmation", {"order_id": order.id, "email": customer_email})
+     return order
+diff --git a/scripts/seed_db.py b/scripts/seed_db.py
+index 8802b58..1d9e9d8 100644
+--- a/scripts/seed_db.py
++++ b/scripts/seed_db.py
+@@ -3,6 +3,7 @@ from decimal import Decimal
+ 
+ from bookshop.catalog.models import Book
+ from bookshop.db import Base, SessionLocal, engine
++from bookshop.invoicing import models as _invoice_models  # noqa: F401  (register tables)
+ from bookshop.orders import models as _order_models  # noqa: F401  (register tables)
+ 
+ BOOKS = [
