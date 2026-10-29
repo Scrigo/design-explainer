@@ -1,0 +1,21 @@
+# Claude Code: personal, machine-local settings (shared settings.json stays tracked)
+.claude/settings.local.json
+
+# design-explain runtime state, if the plugin is run on this repo itself
+.design-explainer/run/
+
+# Node (e.g. a local likeC4 install for experiments)
+node_modules/
+npm-debug.log*
+
+# Logs and scratch
+*.log
+*.tmp
+
+# Editors and OS
+.vscode/
+.idea/
+*.swp
+*~
+.DS_Store
+Thumbs.db

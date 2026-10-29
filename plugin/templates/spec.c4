@@ -1,0 +1,34 @@
+// Managed by design-explain: overwritten from the plugin template on every run. Do not edit.
+specification {
+  element actor {
+    style {
+      shape person
+    }
+  }
+  element system
+  element external-system {
+    style {
+      color muted
+    }
+  }
+  element container
+  element component
+  element database {
+    style {
+      shape storage
+    }
+  }
+  element queue {
+    style {
+      shape queue
+    }
+  }
+
+  // Default (no kind): runtime interaction. code-dependency: depends on another
+  // element's code (types, models, schemas, constants) without calling it.
+  relationship code-dependency {
+    line dotted
+    color muted
+    head open
+  }
+}

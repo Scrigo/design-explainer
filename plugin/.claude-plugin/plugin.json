@@ -1,0 +1,9 @@
+{
+  "name": "design-explain",
+  "version": "0.1.0",
+  "license": "MIT",
+  "author": {
+    "name": "scrigoose"
+  },
+  "description": "Extract a C4 model (Context/Container/Component) of the current project and show it as an interactive likeC4 diagram"
+}

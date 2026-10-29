@@ -1,0 +1,14 @@
+{
+  "name": "design-explainer",
+  "description": "C4 architecture diagrams (likeC4) of AI-agent-generated code",
+  "owner": {
+    "name": "scrigoose"
+  },
+  "plugins": [
+    {
+      "name": "design-explain",
+      "source": "./plugin",
+      "description": "Extract a C4 model of the current project and show it as an interactive likeC4 diagram"
+    }
+  ]
+}

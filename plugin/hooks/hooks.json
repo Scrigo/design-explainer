@@ -1,0 +1,18 @@
+{
+  "description": "Stop the project's likeC4 viewer when the Claude Code session ends (not on /clear or /resume)",
+  "hooks": {
+    "SessionEnd": [
+      {
+        "matcher": "logout|prompt_input_exit|other",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/session-end.sh",
+            "args": [],
+            "timeout": 15
+          }
+        ]
+      }
+    ]
+  }
+}

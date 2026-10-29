@@ -1,0 +1,17 @@
+# design-explain project config (optional, committed). Input for extraction, not a model override.
+# Uncomment and adapt entries as needed.
+
+# Paths that are not part of the system (tooling, generated code, examples).
+# exclude:
+#   - tools/
+#   - examples/
+
+# Mapping hints: force a path into a specific component/container,
+# when the folder structure does not reflect the intended architecture.
+# mapping:
+#   - path: internal/billing/legacy_auth.go
+#     belongs_to: auth
+
+# Free-form notes for the extracting agent (naming, domain vocabulary, known boundaries).
+# notes: |
+#   "core" is the domain layer, not a separate service.
