@@ -38,8 +38,8 @@ IDs may differ in spelling only where noted; the structure below is the referenc
 | actor | `customer` (any reasonable name) | — |
 | external-system | `stripe` | `bookshop/payments/stripe_client.py:1` or `:9` |
 | external-system | `sendgrid` | `bookshop/notifications/email.py:1` or `:6` |
-| container | `api` | `bookshop/api` first (deployment files may follow) |
-| container | `worker` | `bookshop/worker` first |
+| container | `api` | `bookshop/api` first (deployment files may follow); `entrypoint` `bookshop/api/main.py:6`; `endpoints` `GET /health` |
+| container | `worker` | `bookshop/worker` first; `entrypoint` in `bookshop/worker/main.py` |
 | database | `postgres` | `docker-compose.yml` (`bookshop/db.py` may follow) |
 | queue | `redis` | `docker-compose.yml` (`bookshop/jobs.py` may follow) |
 | component (api) | `catalog` | `bookshop/catalog` |
@@ -53,8 +53,8 @@ Expected relationships (evidence = at least one of the listed locations):
 
 | # | From → To | Meaning | Evidence |
 |---|---|---|---|
-| R1 | customer → `catalog` (or `api`) | browses/searches books | `bookshop/catalog/routes.py:10`, `:23`, `:28` |
-| R2 | customer → `orders` (or `api`) | places orders | `bookshop/orders/routes.py:11`, `:33` |
+| R1 | customer → `catalog` (**not** `api`) | `GET /books`, `GET /books/{id}` | `bookshop/catalog/routes.py:23`, `:28` (`:10` router) |
+| R2 | customer → `orders` (**not** `api`) | `POST /orders`, `GET /orders/{id}` | `bookshop/orders/routes.py:33`, `:48` (`:11` router) |
 | R3 | `orders` → `catalog` | looks up books, reserves stock | `bookshop/orders/service.py:30`, `:33` |
 | R4 | `orders` → `payments` | charges the order | `bookshop/orders/service.py:39` |
 | R5 | `orders` → `postgres` | stores orders | `bookshop/orders/service.py:45`, `:46` |
@@ -63,6 +63,8 @@ Expected relationships (evidence = at least one of the listed locations):
 | R8 | `orders` → `redis` | enqueues confirmation job | `bookshop/orders/service.py:48`, `bookshop/jobs.py:13` |
 | R9 | `worker` → `redis` | consumes jobs | `bookshop/worker/main.py:21`, `bookshop/jobs.py:17` |
 | R10 | `notifications` → `sendgrid` | sends e-mail | `bookshop/notifications/email.py:16` |
+
+A single customer → `api` relationship is a failure: the components view would show `catalog` as reachable only through `orders`. `GET /health` (served by `api/main.py` itself, with no caller in the code) is container metadata, not a relationship.
 
 `worker` → `notifications` is **not** modeled: likeC4 rejects container → own-component relationships, and containment already implies it. No code dependencies are expected in step 1: every import between components is already covered by a runtime relationship, or it is a container importing its own components.
 
@@ -75,8 +77,8 @@ In the copy: `/design-explain:show`.
 
 Check:
 - [ ] viewer starts, the report gives the URL, and the diagram renders (context, containers and components views);
-- [ ] elements match the table above (kinds, IDs, `sourcePath`), with no entrypoint component (e.g. `main`);
-- [ ] relationships R1–R10 are present, each with evidence pointing at a real line;
+- [ ] elements match the table above (kinds, IDs, `sourcePath`, `entrypoint`/`endpoints` on containers), with no entrypoint component (e.g. `main`);
+- [ ] relationships R1–R10 are present, each with evidence pointing at a real line; R1/R2 go to the components and are labeled with the endpoints;
 - [ ] none of the "must not appear" items appear;
 - [ ] the report says it's the first model, gives counts, and lists unconfirmed suspicions;
 - [ ] `state.json` has `lastAnalyzedCommit` = HEAD and `workingTreeDirty: false`; `.design-explainer/.gitignore` ignores `run/`;
@@ -128,5 +130,6 @@ All four steps passed after these changes to `SKILL.md`. Each was prompted by a 
 - Step 1 created a component `main` for `worker/main.py` to carry `→ redis` and `→ notifications`, working around likeC4's ban on parent → child relationships. Fix: entrypoint/wiring code is the container itself, there are no container → own-component relationships, and IDs never come from generic names. Container `sourcePath` arrays also started with deployment files. Fix: the main code path comes first.
 - Step 2 left the `invoicing` → `orders` import invisible, which hid the cycle. Fix: the `code-dependency` relationship kind, with cycles named in the report. `spec.c4` is now re-synced from the plugin on every run, so spec changes reach existing workspaces.
 - Step 3 analyzed an uncommitted working tree but recorded HEAD as if it had been analyzed. Fix: `workingTreeDirty` in `state.json`.
+- Architect review afterwards: the customer was connected only to the `api` container, which an exception in `SKILL.md` allowed. In the components view `catalog` therefore looked reachable only through `orders`, although `GET /books` is called directly. `api/main.py` (the entrypoint, mounting routers, serving `/health`) was not visible anywhere either. Fix: actor relationships go to the handling component, labeled with endpoints; containers carry `entrypoint` and `endpoints` metadata. Step 1 has to be re-run against the updated expectations.
 
 Notable positives: every cited evidence line was correct (19/19 in step 1); no traps were hit; the reports flagged real design risks outside the model (charge before commit with no compensation, the still-unused `boto3`); the step 3 answer cited correct lines; and the viewer lifecycle behaved exactly as specified.

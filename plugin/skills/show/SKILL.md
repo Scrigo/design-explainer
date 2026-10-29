@@ -48,6 +48,12 @@ A single-service repo is one container. Aim for components an architect can reas
 
 A container's own entrypoint and wiring code (`main.py`, `app.py`, `main.go`, `index.ts`, the app/DI setup that mounts routers or dispatches jobs) **is the container itself, not a component**. Its outgoing relationships (e.g. consuming a queue) are modeled from the container; its calls into the container's own components are implied by containment and are not modeled (likeC4 rejects parent → child relationships anyway). Never create a component just to have a source for such a relationship.
 
+Make the entrypoint visible on the container instead:
+- `entrypoint '<file:line>'`: where the app is created or started (e.g. `bookshop/api/main.py:6` for `app = FastAPI(...)`);
+- `endpoints [...]`: endpoints the entrypoint itself serves rather than mounting them from a component (e.g. `'GET /health'`). Omit it when there are none.
+
+An entrypoint becomes a component only if it contains substantial logic of its own beyond wiring and trivial endpoints. It is then named after its role, never `main`/`app`.
+
 ### 4. IDs and metadata (stability rules)
 
 - **ID** = slug of the element's main path's last segment: lowercase, `[a-z0-9-]`, starting with a letter (`internal/billing` → `billing`, `cmd/api-server` → `api-server`). If two siblings collide, prefix the parent segment (`orders-api`). Never derive an ID from a generic file or folder name (`main`, `app`, `index`, `src`, `lib`, `__init__`, `cmd`): use the nearest meaningful path segment, or else a slug of the element's role. External systems/actors: slug of their name (`stripe`). Elements are referenced by their dotted path: `shop.api-server.billing`.
@@ -61,7 +67,7 @@ A container's own entrypoint and wiring code (`main.py`, `app.py`, `main.go`, `i
 
 - Add a relationship only if you saw it in the code. Every relationship carries `metadata { evidence '<file:line>' }` or an array of up to 3 locations: `evidence ['a.go:12', 'b.go:40']`.
 - Model relationships at the **lowest level you have evidence for** (component → component, component → database/external-system). likeC4 derives container- and system-level relationships automatically — do not duplicate them at higher levels.
-- Exception: `actor -> container` relationships may use the route/handler file as evidence.
+- **Actors connect to the component that handles their request**, not to the container. Example: `customer -> shop.api.catalog` for the catalog routes and `customer -> shop.api.orders` for the order routes. Never use one `actor -> container` relationship, because the components view would then hide which component serves which endpoint. Label these relationships with the endpoints or operations (`'GET /books, GET /books/{id}'`). Evidence is the route or handler definitions (up to 3; with more endpoints, cite the router declaration plus representative routes). An endpoint served by the entrypoint itself goes into the container's `endpoints` metadata (step 3). It becomes an actor relationship only if a caller is identifiable.
 - Never model a relationship between an element and its own descendant (container → own component); see the entrypoint rule in step 3.
 - Label with what happens ("charges order", "reads/writes orders"), add `technology` when known (`'HTTPS'`, `'gRPC'`, `'SQL'`, `'Kafka'`).
 - No evidence → no relationship. If you suspect a connection you couldn't confirm, mention it in the report instead.
@@ -104,6 +110,8 @@ model {
       description 'Public HTTP API'
       metadata {
         sourcePath 'cmd/api-server'
+        entrypoint 'cmd/api-server/main.go:14'
+        endpoints ['GET /health']
       }
       billing = component 'Billing' {
         description 'Charges orders'
@@ -125,6 +133,12 @@ model {
     }
   }
 
+  customer -> shop.api-server.orders 'POST /orders, GET /orders/{id}' {
+    technology 'HTTPS/JSON'
+    metadata {
+      evidence ['internal/orders/http.go:22', 'internal/orders/http.go:31']
+    }
+  }
   shop.api-server.billing -> stripe 'creates payment intents' {
     technology 'HTTPS'
     metadata {
