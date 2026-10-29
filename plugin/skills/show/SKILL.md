@@ -86,7 +86,7 @@ Write two files (overwrite them fully each run; the previous model was already r
 - `.design-explainer/model/views.c4` — views:
   - `view index` — system context (`include *`),
   - `view <system-id>-containers of <system-id>` — containers,
-  - one `view <container-id>-components of <system-id>.<container-id>` per container that has components.
+  - one `view <container-id>-components of <system-id>.<container-id>` per container that has components, with `include *` plus `include <system-id>.<container-id> -> *` and `include * -> <system-id>.<container-id>`. `include *` alone hides the container's own relationships, such as a worker consuming a queue from its entrypoint.
 
 Syntax reference (verified against likeC4 1.60.0):
 
@@ -167,6 +167,8 @@ views {
   view api-server-components of shop.api-server {
     title 'API server - components'
     include *
+    include shop.api-server -> *
+    include * -> shop.api-server
   }
 }
 ```
