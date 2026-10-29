@@ -2,7 +2,7 @@
   "name": "design-explainer",
   "description": "C4 architecture diagrams (likeC4) of AI-agent-generated code",
   "owner": {
-    "name": "scrigoose"
+    "name": "Scrigo"
   },
   "plugins": [
     {
