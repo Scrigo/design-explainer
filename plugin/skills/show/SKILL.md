@@ -18,6 +18,7 @@ Run `${CLAUDE_PLUGIN_ROOT}/scripts/init-workspace.sh`. It creates (if missing) `
 
 - If the previous `state.json` has `"workingTreeDirty": true`, the previous model also reflected uncommitted changes that may since have been committed or discarded. Treat the changed-files list as incomplete, and compare the model with the code, not with the list.
 - If model files beyond `spec.c4` exist, **read them** — they are the reference point: keep element IDs that still map to existing paths.
+- If `.design-explainer/report.md` exists, read it. It holds the previous run's findings, which this run must re-check against the code (step 8). Treat it as a list of leads, not as a source of truth.
 - Read `.design-explainer/config.yaml`. Its `exclude`, `mapping` and `notes` entries override the default conventions below.
 - Never edit `model/spec.c4` (the script re-syncs it from the plugin on every run); use only the element and relationship kinds it defines.
 
@@ -187,14 +188,44 @@ Strings use single quotes; escape a single quote inside a string as `\'`.
    { "lastAnalyzedCommit": "<git HEAD or null>", "workingTreeDirty": <true|false>, "analyzedAt": "<ISO-8601 UTC>", "likec4Version": "1.60.0" }
    ```
    `workingTreeDirty` is `working_tree_dirty` from step 1 (`false` when there is no git). `true` means the model describes HEAD plus uncommitted changes, not HEAD itself.
-2. Run `${CLAUDE_PLUGIN_ROOT}/scripts/ensure-server.sh` — it starts a detached server or reuses the running one, and prints the URL. The first start can take a while (npx download).
-3. Report to the user, briefly:
-   - the URL;
+2. Write `.design-explainer/report.md`, overwriting it completely. It is committed together with the model, so `git log` gives the history of the reports. Use this structure, and write `None.` under any empty section:
+
+   ```markdown
+   # Architecture report
+
+   - Commit: `<short HEAD>` (add "+ uncommitted changes" if workingTreeDirty)
+   - Analyzed: <ISO-8601 UTC>
+   - Model: <n> containers, <n> components, <n> external systems, <n> relationships (<n> runtime, <n> code dependencies)
+
+   ## Changes since the previous run
+   ### In the code
+   <new, removed or changed elements and relationships caused by code changes; "First model." on the first run>
+   ### Model corrections
+   <changes made to follow the skill's rules, with no code change behind them>
+
+   ## Dependency cycles
+   - `a` ⇄ `b`: <how, with file:line>
+
+   ## Unconfirmed relationships
+   - <suspected connection, and why it couldn't be confirmed>
+
+   ## Deliberately not modeled
+   - <path or import>: <reason>
+
+   ## Other observations
+   - **[new|open|resolved]** <risk or issue outside the model's structure, e.g. a partial-failure risk or an unused dependency>, `file:line`
+   ```
+
+   Status in "Other observations": compare with the previous report and re-check every earlier observation in the code. **open** = still present; **resolved** = gone (list it once, then drop it in the next run); **new** = first seen in this run. Keep the language of the previous report; for the first report, use the language of the conversation.
+3. Run `${CLAUDE_PLUGIN_ROOT}/scripts/ensure-server.sh` — it starts a detached server or reuses the running one, and prints the URL. The first start can take a while (npx download).
+4. Report to the user, briefly:
+   - the URL, and that the full report is in `.design-explainer/report.md`;
    - if `workingTreeDirty`: that the model includes uncommitted changes, and that the model should be committed together with them;
    - counts: containers, components, external systems, relationships;
    - **what changed** since the last run, derived from `git diff -- .design-explainer/model` (if the model was never committed, say it's the first model);
    - dependency cycles between elements (runtime and/or code dependencies);
    - relationships you suspected but couldn't confirm, and anything you excluded or were unsure about;
+   - other observations, marking which are new and which are resolved;
    - a reminder that `.design-explainer/` (except `run/`) is meant to be committed — do not commit it yourself unless asked.
 
 ## After the diagram: resolving element IDs back to code

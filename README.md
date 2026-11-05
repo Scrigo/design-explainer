@@ -45,11 +45,12 @@ After reviewing the diagram, ask Claude for changes in terms of the diagram — 
 │   └── views.c4     # diagram views
 ├── config.yaml      # optional hints for the analysis (exclusions, mapping, notes)
 ├── state.json       # last analyzed commit, uncommitted-changes flag
+├── report.md        # findings of the last run: changes, cycles, observations
 ├── .gitignore       # ignores run/
 └── run/             # viewer pid, port, log (not committed)
 ```
 
-Commit everything except `run/`: `git diff` of the model then shows how the architecture changed, and `git log` gives its history.
+Commit everything except `run/`: `git diff` of the model then shows how the architecture changed, and `git log` gives its history. `report.md` is rewritten on every run. Observations carry over between runs: each one is marked new, open or resolved.
 
 Use `config.yaml` when the folder structure doesn't reflect the intended architecture — e.g. to say a file belongs to another component, or that a directory isn't part of the system.
 

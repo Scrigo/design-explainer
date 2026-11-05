@@ -83,6 +83,7 @@ Check:
 - [ ] none of the "must not appear" items appear;
 - [ ] the report says it's the first model, gives counts, and lists unconfirmed suspicions;
 - [ ] `state.json` has `lastAnalyzedCommit` = HEAD and `workingTreeDirty: false`; `.design-explainer/.gitignore` ignores `run/`;
+- [ ] `report.md` is written with all sections. "Changes" says it's the first model; "Deliberately not modeled" lists `scripts/`; "Other observations" lists the unused `boto3` as **new**;
 - [ ] `validate.sh` passes; nothing is committed by the agent.
 
 Then commit the model: `git add .design-explainer && git commit -m "Add architecture model"`.
@@ -103,7 +104,7 @@ Check:
 - [ ] `invoicing -[code-dependency]-> orders` ("uses Order model", `invoicing/service.py:4`), drawn dotted;
 - [ ] the report names the cycle `orders` ⇄ `invoicing`;
 - [ ] **all other element IDs unchanged**; shifted evidence line numbers in `orders` are updated;
-- [ ] the report summarizes the change from `git diff` of the model; `state.json` is updated; the viewer was reused (same PID, no second server) and the open page reloaded by itself.
+- [ ] `report.md` lists the cycle under "Dependency cycles" and marks `boto3` as **open**; the report summarizes the change from `git diff` of the model; `state.json` is updated; the viewer was reused (same PID, no second server) and the open page reloaded by itself.
 
 Commit the model again.
 
@@ -116,11 +117,12 @@ Check:
 - [ ] the agent resolves the IDs to the right files via `sourcePath` / `evidence`, without re-exploring the whole repo;
 - [ ] the answer to Q1 cites correct lines and explains the roles (synchronous charge inside `place_order`);
 - [ ] Q2 is done in the code, not by editing the model; the rerun removes the code dependency and nothing else changes structurally;
-- [ ] when the code change is not committed yet, `state.json` has `workingTreeDirty: true` and the report says so.
+- [ ] when the code change is not committed yet, `state.json` has `workingTreeDirty: true` and the report says so (also in the `report.md` header);
+- [ ] after Q2, `report.md` has "Dependency cycles: None.", and any observation about the cycle is marked **resolved**.
 
 ### Step 4: lifecycle
 - [ ] `/design-explain:stop` stops the viewer; a second call reports that it was not running;
-- [ ] `/design-explain:show` again restarts it on the same port; with no code change, only `state.json` changes;
+- [ ] `/design-explain:show` again restarts it on the same port; with no code change, only `state.json` and the `report.md` header change, and observations already marked resolved disappear;
 - [ ] `/clear` does **not** stop the viewer;
 - [ ] exiting the session stops it (no process listening on the port from `.design-explainer/run/server.port`).
 

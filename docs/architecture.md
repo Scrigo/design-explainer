@@ -61,6 +61,7 @@ Server handling:
 The generated model lives in the target repo and **is committed**; runtime state (pidfile, port, log) is gitignored. Committing the model gives:
 - a **"what changed" report** from `git diff` of the model files;
 - **architecture history** from `git log` of the model;
+- **report history** from `git log` of `report.md`, the written report of each run (see the extraction workflow, step 8);
 - groundwork for **incremental regeneration**: `state.json` records the last analyzed commit.
 
 ### 5. Code is the single source of truth
@@ -71,7 +72,7 @@ There is no manual override layer for the model's structure. Architect feedback 
 
 What `/design-explain:show` instructs the agent to do (details in `plugin/skills/show/SKILL.md`):
 
-1. **Load the previous state**: the previous model (the reference point for IDs), `state.json`, the files changed since the last analyzed commit, and the project config.
+1. **Load the previous state**: the previous model (the reference point for IDs), `state.json`, the previous `report.md` (its findings are leads to re-check, not facts), the files changed since the last analyzed commit, and the project config.
 2. **Lightweight recon** before reading code: the directory tree, manifests (`package.json`, `pyproject.toml`, `go.mod`, `pom.xml`/`build.gradle`, …), Dockerfiles and compose files, the README and config files. Then Grep for imports, routes, DB access and queue producers/consumers, reading only the files needed to confirm them.
 3. **Apply the mapping convention**:
    - **System** = the analyzed repository.
@@ -90,7 +91,15 @@ What `/design-explain:show` instructs the agent to do (details in `plugin/skills
    - **`code-dependency`** (drawn dotted): one element imports another's types, models or constants without calling it. These are only drawn between modeled elements, and omitted when a runtime relationship already exists in the same direction. They make dependency cycles visible, and the report names each cycle.
 6. **Write** `model.c4` and `views.c4` in full: a system context view, a containers view, and a components view per container.
 7. **Validate** with `likec4 validate` (at most 3 fix attempts), and spot-check that the cited evidence lines support the relationships.
-8. **Record the state, ensure the viewer, report**: the URL, counts, the changes since the last run (from `git diff` of the model), dependency cycles, and suspected but unconfirmed relationships. The agent never commits on its own.
+8. **Record the state, write the report, ensure the viewer, report in the terminal.** `report.md` is overwritten on each run and has fixed sections:
+   - a header (commit, dirty flag, date, counts);
+   - changes since the previous run, split into code changes and model corrections;
+   - dependency cycles;
+   - unconfirmed relationships;
+   - what was deliberately not modeled;
+   - other observations (risks outside the model's structure), each marked new, open or resolved after re-checking the previous report against the code.
+
+   The report holds what the diagram can't show, namely interpretation and findings, and its history comes from git like the model's. The terminal report carries the same content plus the URL. The agent never commits on its own.
 
 ## Project config: `.design-explainer/config.yaml`
 
@@ -128,6 +137,7 @@ Repository layout:
 - `model/spec.c4`: element and relationship kinds. The plugin owns this file: `init-workspace.sh` re-syncs it from `templates/spec.c4` on every run, so spec changes reach existing workspaces. The agent never edits it;
 - `model/model.c4` (elements and relationships) and `model/views.c4` (views): both fully rewritten on each run, after the previous version has been read as the reference;
 - `config.yaml`: the project config (the template contains commented examples);
+- `report.md`: the report of the last run (overwritten each time; see the extraction workflow, step 8);
 - `state.json`: `lastAnalyzedCommit`, `workingTreeDirty` (true when the model also reflects uncommitted code changes, so it describes HEAD plus the working tree), `analyzedAt`, `likec4Version`;
 - `.gitignore` ignores `run/`, which holds `server.pid`, `server.port` and `server.log`.
 

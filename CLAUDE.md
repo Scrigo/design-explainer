@@ -38,7 +38,7 @@ The extraction "engine" is Claude Code's own agentic loop; rendering is [likeC4]
 - **Not in the MVP**: likeC4 MCP server (can't be bootstrapped mid-session) and its Agent Skill; subagent fan-out; incremental runs; architecture-rules conformance checking (the main long-term direction).
 - **No manual model override**: architect feedback becomes real code changes; the next run picks them up. Categorization disagreements go into optional mapping hints in `.design-explainer/config.yaml`.
 
-Target-repo workspace: `.design-explainer/` with `model/{spec,model,views}.c4`, `config.yaml`, `state.json` (committed) and `run/` (pidfile/port/log, gitignored). End-to-end test: test app in `examples/bookshop/` (+ `examples/bookshop-invoicing.patch` for step 2); setup, expected model, scenario and results in docs/testing.md. Always run it on a copy outside this repo, and never put docs/testing.md (or hints from it) into the copy: the agent under test would read it during recon.
+Target-repo workspace: `.design-explainer/` with `model/{spec,model,views}.c4`, `config.yaml`, `state.json`, `report.md` (committed; the report is overwritten each run, findings carry over as new/open/resolved) and `run/` (pidfile/port/log, gitignored). End-to-end test: test app in `examples/bookshop/` (+ `examples/bookshop-invoicing.patch` for step 2); setup, expected model, scenario and results in docs/testing.md. Always run it on a copy outside this repo, and never put docs/testing.md (or hints from it) into the copy: the agent under test would read it during recon.
 
 ## Working on this repo
 
